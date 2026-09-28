@@ -12,6 +12,7 @@ const path = express();
 const uploadDirectory = pathModule.join(__dirname, "uploads");
 const portServer = Number(process.env.PORT) || 3001;
 const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
+const isProduction = process.env.NODE_ENV === "production";
 const mongoUri = process.env.MONGODB_URI;
 const sessionSecret = process.env.SESSION_SECRET;
 if (!mongoUri) {
@@ -28,6 +29,10 @@ const followRoutes = require("./routes/follow.routes");
 const notificationsRoutes = require("./routes/notifications.routes");
 const messagesRoutes = require("./routes/messages.routes");
 const httpServer = http.createServer(path);
+
+if (isProduction) {
+  path.set("trust proxy", 1);
+}
 
 const io = new Server(httpServer, {
   cors: {
@@ -57,7 +62,8 @@ const sessionMiddleware = session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
   },
   store,
 });
@@ -156,6 +162,12 @@ path.use("/post", postRoutes(io));
 path.use("/follow", followRoutes(io));
 path.use("/Notifications", notificationsRoutes(io));
 path.use("/messages", messagesRoutes(io));
+path.get("/health", (req, res) => {
+  const isDatabaseConnected = mongoose.connection.readyState === 1;
+  res.status(isDatabaseConnected ? 200 : 503).json({
+    status: isDatabaseConnected ? "ok" : "database_unavailable",
+  });
+});
 path.get(
   "/isLoggedIn",
   handleAsyncError(async (req, res) => {
